@@ -25,9 +25,9 @@ async function run() {
     const tasksCollection = db.collection('Tasks');
 
     // Fetch tasks
-    app.get('/tasks', async (req, res) => {
+    app.get('/task', async (req, res) => {
       try {
-        const tasks = await tasksCollection.find().toArray();
+        const tasks = await tasksCollection.find().sort({ order: 1 }).toArray(); 
         console.log('Fetched tasks:', tasks);
         res.status(200).json(tasks);
       } catch (err) {
@@ -35,10 +35,28 @@ async function run() {
       }
     });
 
+    app.get('/tasks/:email', async (req, res) => {
+      try {
+          const email = req.params.email;
+          const tasks = await tasksCollection.find({ email: email }).sort({ order: 1 }).toArray(); 
+          console.log(`Fetched tasks for ${email}:`, tasks);
+          res.status(200).json(tasks);
+      } catch (err) {
+          console.error("Error fetching tasks:", err);
+          res.status(500).json({ message: 'Error fetching tasks' });
+      }
+  });
+  
+
     // Create task
     app.post('/tasks', async (req, res) => {
       try {
         const task = req.body;
+
+        // Set initial order based on the existing tasks in the category
+        const lastTask = await tasksCollection.find({ category: task.category }).sort({ order: -1 }).limit(1).toArray();
+        task.order = lastTask.length > 0 ? lastTask[0].order + 1 : 1;
+
         const result = await tasksCollection.insertOne(task);
 
         // Broadcast new task to WebSocket clients
@@ -51,21 +69,15 @@ async function run() {
       }
     });
 
-
-    // ✅ UPDATE (Update a task by ID)
+    // Update task (including order)
     app.put('/tasks/:id', async (req, res) => {
       try {
         const id = req.params.id;
-        const updatedTask = {
-          $set: {
-            title: req.body.title,
-            description: req.body.description,
-          },
-        };
+        const updatedFields = req.body;
 
         const result = await tasksCollection.updateOne(
           { _id: new ObjectId(id) },
-          updatedTask
+          { $set: updatedFields }
         );
 
         if (result.modifiedCount === 0) {
@@ -124,4 +136,3 @@ function broadcast(message) {
 app.get('/', (req, res) => {
   res.send('Task management system is ready!');
 });
-
